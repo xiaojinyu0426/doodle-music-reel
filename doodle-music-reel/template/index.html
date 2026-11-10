@@ -1,0 +1,148 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Doodle music</title>
+<style>
+  :root { --ink:#2a2826; --page:#f3f0e6; --paper:#fdfcf7; --edge:#d9d4c3; --depth:#cfc9b5; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html,body { width:1080px; height:1920px; overflow:hidden; background:var(--page); }
+  body { font-family:ui-rounded,"SF Pro Rounded",system-ui,-apple-system,"Segoe UI",sans-serif; color:var(--ink); }
+  #paper { position:absolute; left:54px; top:60px; width:972px; height:1283px; border-radius:36px; border:4px solid var(--ink); background:var(--paper); overflow:hidden; box-shadow:0 10px 0 var(--ink); }
+  #paper canvas { position:absolute; left:-4px; top:-4px; }
+  #handle { position:absolute; left:26px; top:24px; padding:10px 22px; border-radius:40px; background:var(--ink); color:#fff; font-size:32px; font-weight:700; display:none; }
+
+  #tools { position:absolute; left:54px; right:54px; top:1384px; height:88px; display:flex; align-items:center; gap:18px; }
+  .btn { width:88px; height:82px; border-radius:26px; border:4px solid var(--ink); background:#fff; box-shadow:0 7px 0 var(--ink); display:flex; align-items:center; justify-content:center; }
+  .btn svg { width:44px; height:44px; fill:none; stroke:var(--ink); stroke-width:4.5; stroke-linecap:round; stroke-linejoin:round; }
+  .btn.on { background:var(--ink); } .btn.on svg { stroke:#fff; }
+  .btn.hot { background:#f08c2e; }
+  .chip { height:82px; padding:0 30px; border-radius:26px; border:4px solid var(--ink); background:#fff; box-shadow:0 7px 0 var(--ink); display:flex; align-items:center; gap:14px; font-size:36px; font-weight:800; white-space:nowrap; }
+  .chip small { font-size:26px; font-weight:700; opacity:.55; }
+  #spacer { flex:1; }
+
+  #swatches { position:absolute; left:54px; right:54px; top:1500px; height:76px; display:flex; justify-content:space-between; align-items:flex-end; }
+  .sw { width:74px; height:60px; border-radius:20px; border:4px solid var(--ink); box-shadow:0 6px 0 var(--ink); }
+  .sw.on { transform:translateY(-12px); box-shadow:0 18px 0 var(--ink); }
+
+  #keys { position:absolute; left:54px; right:54px; top:1610px; height:186px; border-radius:22px; border:4px solid var(--ink); overflow:hidden; background:#fff; box-shadow:0 8px 0 var(--ink); }
+  .k { position:absolute; }
+  .k.w { top:0; height:100%; border-right:3px solid var(--edge); background:#fff; }
+  .k.b { top:0; height:60%; background:var(--ink); border-radius:0 0 9px 9px; z-index:2; }
+  .k.b.off { background:#6f6b64; }
+  .k.w.off { background:#f0ede3; }
+</style></head>
+<body>
+  <div id="paper"><canvas id="c" width="972" height="1283"></canvas><div id="handle"></div></div>
+
+  <div id="tools">
+    <div class="btn hot"><svg viewBox="0 0 44 44"><path d="M15 9v26M29 9v26"/></svg></div>
+    <div class="btn on"><svg viewBox="0 0 44 44"><path d="M9 35l3-10L30 7l7 7-18 18-10 3z"/></svg></div>
+    <div class="btn"><svg viewBox="0 0 44 44"><path d="M18 36L7 25 25 7l12 12-17 17H18zM16 16l12 12"/></svg></div>
+    <div class="btn"><svg viewBox="0 0 44 44"><path d="M13 19H29a8 8 0 010 16H17M13 19l7-7M13 19l7 7"/></svg></div>
+    <div id="spacer"></div>
+    <div class="chip" id="keychip"></div>
+    <div class="chip" id="bpmchip"></div>
+  </div>
+  <div id="swatches"></div>
+  <div id="keys"></div>
+
+<script src="engine.js"></script>
+<script>
+const E = window.DoodleEngine
+const param = new URLSearchParams(location.search)
+const file = param.get('d') || 'drawings/sunflower.js'
+window.READY = new Promise((ok, fail) => {
+  const s = document.createElement('script')
+  s.src = file
+  s.onerror = () => fail(new Error('Could not load ' + file))
+  s.onload = () => document.fonts.ready.then(() => { start(); ok() })
+  document.head.appendChild(s)
+})
+
+function start() {
+  const P = E.prepare(window.__DOODLE)
+  const cv = document.getElementById('c'), ctx = cv.getContext('2d')
+  const scale = 972 / E.W, X = (x) => x * scale, Y = (y) => y * scale
+
+  // The grid is the music: vertical lines are beats, horizontal lines are the notes of the scale.
+  const grid = document.createElement('canvas'); grid.width = cv.width; grid.height = cv.height
+  const g = grid.getContext('2d')
+  g.fillStyle = '#fdfcf7'; g.fillRect(0, 0, grid.width, grid.height)
+  g.strokeStyle = '#efece0'; g.lineWidth = 1.5
+  for (let i = 0; i <= 32; i++) { const x = X((i * E.W) / 32); g.beginPath(); g.moveTo(x, 0); g.lineTo(x, grid.height); g.stroke() }
+  for (let i = 0; i <= P.maxStep * 3; i++) { const y = Y((i * P.stepH) / 3); g.beginPath(); g.moveTo(0, y); g.lineTo(grid.width, y); g.stroke() }
+  g.strokeStyle = '#dcd8c9'; g.lineWidth = 2.5
+  for (let i = 0; i <= 8; i++) { const x = X((i * E.W) / 8); g.beginPath(); g.moveTo(x, 0); g.lineTo(x, grid.height); g.stroke() }
+  for (let i = 0; i <= 3; i++) { const y = Y((i * P.scale.length * P.stepH)); g.beginPath(); g.moveTo(0, y); g.lineTo(grid.width, y); g.stroke() }
+
+  if (P.spec.handle) { const h = document.getElementById('handle'); h.textContent = P.spec.handle; h.style.display = 'block' }
+  document.getElementById('keychip').innerHTML = (P.spec.key || 'D') + ' <small>' + (P.spec.scale || 'pentatonic') + '</small>'
+  document.getElementById('bpmchip').innerHTML = P.bpm + ' <small>bpm</small>'
+
+  // One chunky swatch per color. The one being drawn with lifts up.
+  const swatches = {}
+  const swBox = document.getElementById('swatches')
+  for (const n of Object.keys(E.COLORS)) { const d = document.createElement('div'); d.className = 'sw'; d.style.background = E.COLORS[n].hex; swBox.appendChild(d); swatches[n] = d }
+
+  // Three octaves of keys, the same range as the page. Keys light up in the color playing them.
+  const keysBox = document.getElementById('keys'), keyEls = {}
+  const lo = P.rootMidi, hi = P.rootMidi + 36, BLACK = [1, 3, 6, 8, 10]
+  const isB = (m) => BLACK.includes(m % 12)
+  const inScale = (m) => P.scale.includes((m - P.rootMidi + 120) % 12)
+  let whites = 0
+  for (let m = lo; m <= hi; m++) if (!isB(m)) whites++
+  const kw = (972 - 8) / whites
+  let wi = 0
+  for (let m = lo; m <= hi; m++) {
+    const d = document.createElement('div')
+    if (isB(m)) { d.className = 'k b'; d.style.left = wi * kw - kw * 0.3 + 'px'; d.style.width = kw * 0.6 + 'px' }
+    else { d.className = 'k w'; d.style.left = wi * kw + 'px'; d.style.width = kw + 'px'; wi++ }
+    if (!inScale(m)) d.classList.add('off')
+    keysBox.appendChild(d); keyEls[m] = d
+  }
+  let lit = {}
+
+  window.DUR = P.end
+  window.seek = (t) => {
+    ctx.drawImage(grid, 0, 0)
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round'
+    let current = null
+    for (const s of P.strokes) {
+      if (s.t0 > t) continue
+      current = s
+      ctx.strokeStyle = s.hex
+      for (let i = 1; i < s.ink.length; i++) {
+        if (s.time[i] > t) break
+        ctx.lineWidth = s.width * (1 + 0.1 * s.rough(i / 7))
+        ctx.beginPath(); ctx.moveTo(X(s.ink[i - 1][0]), Y(s.ink[i - 1][1])); ctx.lineTo(X(s.ink[i][0]), Y(s.ink[i][1])); ctx.stroke()
+      }
+    }
+    // Playhead, plus a dot wherever it's touching the drawing.
+    const px = P.xAt(t)
+    ctx.strokeStyle = '#2a2826'; ctx.lineWidth = 4
+    ctx.beginPath(); ctx.moveTo(X(px), 0); ctx.lineTo(X(px), cv.height); ctx.stroke()
+    ctx.fillStyle = '#2a2826'
+    for (const s of P.strokes) {
+      if (s.t0 > t) continue
+      let lastHit = -99
+      for (let i = 1; i < s.ink.length; i++) {
+        if (s.time[i] > t) break
+        const a = s.ink[i - 1], b = s.ink[i]
+        if ((a[0] <= px && b[0] > px) || (a[0] > px && b[0] <= px)) {
+          if (i - lastHit < 6) continue
+          lastHit = i
+          const u = (px - a[0]) / (b[0] - a[0])
+          ctx.beginPath(); ctx.arc(X(px), Y(a[1] + (b[1] - a[1]) * u), 13, 0, Math.PI * 2); ctx.fill()
+        }
+      }
+    }
+    const pick = current ? current.color : P.strokes[0].color
+    for (const n in swatches) swatches[n].classList.toggle('on', n === pick)
+    const now = {}
+    for (const v of P.activeAt(t)) if (keyEls[v.midi]) now[v.midi] = E.COLORS[v.color].hex
+    for (const m in lit) if (!now[m]) keyEls[m].style.background = ''
+    for (const m in now) keyEls[m].style.background = now[m]
+    lit = now
+  }
+  window.seek(0)
+}
+</script>
+</body></html>
